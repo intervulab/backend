@@ -1,0 +1,15 @@
+# Node dependencies
+node_modules/
+npm-debug.log*
+
+# Environment & Secrets
+.env
+.env.local
+
+# Storage & File Uploads
+storage/uploads/*
+!storage/uploads/.gitkeep
+
+# Operating System Files
+.DS_Store
+Thumbs.db

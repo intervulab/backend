@@ -1,0 +1,234 @@
+// File: prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ----------------------------------------------------
+// ENUMS
+// ----------------------------------------------------
+
+enum Role {
+  CANDIDATE
+  ADMIN
+}
+
+enum ResumeStatus {
+  PENDING
+  PROCESSING
+  PARSED
+  FAILED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum QuestionCategory {
+  TECHNICAL_CONCEPT
+  SYSTEM_DESIGN
+  CODING_LOGIC
+  BEHAVIORAL
+  DEVI_ADVOCATE
+}
+
+enum JobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ----------------------------------------------------
+// MODELS
+// ----------------------------------------------------
+
+model User {
+  id           String            @id @default(uuid())
+  email        String            @unique
+  passwordHash String
+  role         Role              @default(CANDIDATE)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  profile      CandidateProfile?
+
+  @@map("users")
+}
+
+model CandidateProfile {
+  id                String             @id @default(uuid())
+  userId            String             @unique
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  firstName         String
+  lastName          String
+  phone             String?
+  targetRole        String?
+  yearsExperience   Int?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  resumes           Resume[]
+  interviewSessions InterviewSession[]
+
+  @@map("candidate_profiles")
+}
+
+model Resume {
+  id                String           @id @default(uuid())
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  originalFileName  String
+  storedFileName    String
+  fileUrl           String
+  mimeType          String
+  fileSizeBytes     Int
+  extractedText     String?          @db.Text
+  status            ResumeStatus     @default(PENDING)
+  failureReason     String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  interviewSessions InterviewSession[]
+
+  @@index([candidateId])
+  @@map("resumes")
+}
+
+model InterviewSession {
+  id                     String                  @id @default(uuid())
+  candidateId            String
+  candidate              CandidateProfile        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  resumeId               String?
+  resume                 Resume?                 @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  title                  String
+  targetRole             String
+  status                 SessionStatus           @default(SCHEDULED)
+  startedAt              DateTime?
+  completedAt            DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  systemDesignSubmission SystemDesignSubmission?
+  questions              InterviewQuestion[]
+  agentInteractions      AgentInteraction[]
+  report                 InterviewReport?
+
+  @@index([candidateId])
+  @@map("interview_sessions")
+}
+
+model SystemDesignSubmission {
+  id                 String           @id @default(uuid())
+  interviewSessionId String           @unique
+  interviewSession   InterviewSession @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  canvasDataJson     Json
+  aiFeedback         Json?
+  submittedAt        DateTime         @default(now())
+
+  @@map("system_design_submissions")
+}
+
+model InterviewQuestion {
+  id                 String           @id @default(uuid())
+  interviewSessionId String
+  interviewSession   InterviewSession @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  questionText       String           @db.Text
+  category           QuestionCategory
+  difficulty         String
+  orderIndex         Int
+  createdAt          DateTime         @default(now())
+  answer             CandidateAnswer?
+
+  @@index([interviewSessionId])
+  @@map("interview_questions")
+}
+
+model CandidateAnswer {
+  id                  String               @id @default(uuid())
+  interviewQuestionId String               @unique
+  interviewQuestion   InterviewQuestion    @relation(fields: [interviewQuestionId], references: [id], onDelete: Cascade)
+  transcriptText      String?              @db.Text
+  audioFileUrl        String?
+  durationSeconds     Float?
+  submittedAt         DateTime             @default(now())
+  audioAnalysis       AudioAnalysis?
+  evaluation          InterviewEvaluation?
+
+  @@map("candidate_answers")
+}
+
+model AudioAnalysis {
+  id                String          @id @default(uuid())
+  candidateAnswerId String          @unique
+  candidateAnswer   CandidateAnswer @relation(fields: [candidateAnswerId], references: [id], onDelete: Cascade)
+  speechPaceWpm     Float?
+  fillerWordsCount  Int?
+  hesitationCount   Int?
+  clarityScore      Float?
+  rawMetricsJson    Json?
+  createdAt         DateTime        @default(now())
+
+  @@map("audio_analyses")
+}
+
+model AgentInteraction {
+  id                 String           @id @default(uuid())
+  interviewSessionId String
+  interviewSession   InterviewSession @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  agentName          String
+  actionType         String
+  payload            Json
+  createdAt          DateTime         @default(now())
+
+  @@index([interviewSessionId])
+  @@map("agent_interactions")
+}
+
+model InterviewEvaluation {
+  id                String          @id @default(uuid())
+  candidateAnswerId String          @unique
+  candidateAnswer   CandidateAnswer @relation(fields: [candidateAnswerId], references: [id], onDelete: Cascade)
+  technicalScore    Float
+  clarityScore      Float
+  feedbackText      String          @db.Text
+  strengths         String[]
+  improvements      String[]
+  evaluatedAt       DateTime        @default(now())
+
+  @@map("interview_evaluations")
+}
+
+model InterviewReport {
+  id                 String           @id @default(uuid())
+  interviewSessionId String           @unique
+  interviewSession   InterviewSession @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  overallScore       Float
+  technicalSummary   String           @db.Text
+  behavioralSummary  String           @db.Text
+  recommendation     String
+  detailedFeedback   Json
+  generatedAt        DateTime         @default(now())
+
+  @@map("interview_reports")
+}
+
+model BackgroundJob {
+  id           String    @id @default(uuid())
+  bullJobId    String    @unique
+  queueName    String
+  jobType      String
+  status       JobStatus @default(QUEUED)
+  payload      Json
+  result       Json?
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([bullJobId])
+  @@map("background_jobs")
+}
