@@ -1,5 +1,7 @@
 # Full demo setup
 
+> **Canonical runbook (humans + LLM agents):** [LOCAL_DEPLOYMENT.md](./LOCAL_DEPLOYMENT.md) — step numbers, verification commands, and an automation prompt.
+
 Clone all five repos as **siblings** (same parent directory), checkout branch **`integration/demo`** on each:
 
 - `backend` (C3)

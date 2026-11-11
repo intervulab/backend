@@ -1,5 +1,7 @@
 # InterviewLab — Local integration (Component 3 hub)
 
+**Run locally:** [LOCAL_DEPLOYMENT.md](./LOCAL_DEPLOYMENT.md) (full stack) · [FULL_DEMO_SETUP.md](./FULL_DEMO_SETUP.md) (summary)
+
 ## Service ports
 
 | Service | Port | Health |
