@@ -91,6 +91,20 @@ export async function createInterviewSession(req, res, next) {
 
     await prisma.interviewQuestion.createMany({ data: questionsToStore });
 
+    const seededQuestions = await prisma.interviewQuestion.findMany({
+      where: { interviewSessionId: session.id },
+    });
+    await Promise.all(
+      seededQuestions
+        .filter((q) => !q.agentQuestionId)
+        .map((q) =>
+          prisma.interviewQuestion.update({
+            where: { id: q.id },
+            data: { agentQuestionId: q.id },
+          }),
+        ),
+    );
+
     const fullSession = await prisma.interviewSession.update({
       where: { id: session.id },
       data: {

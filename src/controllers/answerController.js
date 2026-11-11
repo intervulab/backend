@@ -4,14 +4,28 @@ import { ApiError } from '../middleware/errorHandler.js';
 import * as agentClient from '../services/agentClient.js';
 import * as mlClient from '../services/mlClient.js';
 
-function mapAudioMetricsToPrisma(metrics) {
+function mapAudioMetricsToPrisma(metrics, { durationSeconds, transcriptText } = {}) {
   if (!metrics) return null;
+  const wordCount = (transcriptText || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
+  const pace =
+    metrics.averageWPM ??
+    metrics.speechPaceWpm ??
+    (wordCount > 0 && durationSeconds > 0 ? (wordCount / durationSeconds) * 60 : 0);
   return {
-    speechPaceWpm: metrics.averageWPM ?? metrics.speechPaceWpm ?? 0,
+    speechPaceWpm: pace,
     fillerWordsCount: metrics.fillerWordCount ?? metrics.fillerWordsCount ?? 0,
     hesitationCount: metrics.hesitationCount ?? 0,
     clarityScore: metrics.clarityScore ?? 0,
-    rawMetricsJson: metrics,
+    rawMetricsJson: {
+      ...metrics,
+      averageWPM: pace,
+      durationSeconds: durationSeconds ?? null,
+      transcriptWordEstimate: wordCount,
+      transcriptText: transcriptText || null,
+    },
   };
 }
 
@@ -30,32 +44,72 @@ export async function submitCandidateAnswer(req, res, next) {
     }
 
     const sessionId = question.interviewSessionId;
-    const answerText = (transcriptText || '').trim() || '(spoken answer — see transcript)';
     const audioFileUrl = req.file ? `/uploads/${req.file.filename}` : null;
 
+    let effectiveTranscript = (transcriptText || '').trim();
     let audioMetrics = null;
 
+    if (effectiveTranscript) {
+      try {
+        await mlClient.appendTranscript(sessionId, effectiveTranscript, true);
+      } catch (mlErr) {
+        console.warn('[integration] ML transcript segment failed:', mlErr.message);
+      }
+    }
+
     if (req.file?.path) {
-      const analysis = await mlClient.analyzeAudioFile(
-        sessionId,
-        req.file.path,
-        transcriptText,
-        req.file.originalname,
-      );
-      audioMetrics = analysis?.audio_metrics;
-    } else if (transcriptText?.trim()) {
-      await mlClient.appendTranscript(sessionId, transcriptText);
+      try {
+        const analysis = await mlClient.analyzeAudioFile(
+          sessionId,
+          req.file.path,
+          effectiveTranscript || undefined,
+          req.file.originalname,
+          durationSeconds != null ? parseFloat(durationSeconds) : undefined,
+        );
+        audioMetrics = analysis?.audio_metrics;
+        if (!effectiveTranscript && analysis?.audio_transcript?.trim()) {
+          effectiveTranscript = analysis.audio_transcript.trim();
+        }
+      } catch (mlErr) {
+        console.warn('[integration] ML analyze-file failed:', mlErr.message);
+      }
+    }
+
+    if (!audioMetrics && effectiveTranscript) {
+      try {
+        const finalized = await mlClient.finalizeSession(sessionId);
+        audioMetrics = finalized?.audio_metrics;
+      } catch (mlErr) {
+        console.warn('[integration] ML finalize fallback failed:', mlErr.message);
+      }
     }
 
     const envelope = await mlClient.getEnvelope(sessionId);
+    if (!effectiveTranscript && envelope?.audio_transcript?.trim()) {
+      effectiveTranscript = envelope.audio_transcript.trim();
+    }
+
+    const durationLabel =
+      durationSeconds != null && !Number.isNaN(parseFloat(durationSeconds))
+        ? `${Math.round(parseFloat(durationSeconds))}s`
+        : null;
+    if (!effectiveTranscript && req.file) {
+      effectiveTranscript = durationLabel
+        ? `Voice answer recorded (${durationLabel})`
+        : 'Voice answer recorded';
+    }
+
+    const answerText = effectiveTranscript || '(spoken answer — see transcript)';
 
     let agentResponse = null;
-    if (question.agentQuestionId) {
+    const agentQuestionId = question.agentQuestionId || question.id;
+
+    try {
       agentResponse = await agentClient.submitAnswer({
         session_id: sessionId,
-        question_id: question.agentQuestionId,
+        question_id: agentQuestionId,
         candidate_answer: answerText,
-        audio_transcript: envelope?.audio_transcript || transcriptText || null,
+        audio_transcript: envelope?.audio_transcript || effectiveTranscript || null,
       });
 
       await prisma.agentInteraction.create({
@@ -66,14 +120,40 @@ export async function submitCandidateAnswer(req, res, next) {
           payload: agentResponse,
         },
       });
+    } catch (agentErr) {
+      console.warn('[integration] Agent answer failed:', agentErr.message);
     }
 
-    const audioAnalysisData = mapAudioMetricsToPrisma(audioMetrics);
+    if (!agentResponse?.evaluation && effectiveTranscript.length > 2) {
+      try {
+        const rubric = await mlClient.gradeRubric({
+          session_id: sessionId,
+          question_id: question.id,
+          question_text: question.questionText,
+          answer_text: effectiveTranscript,
+        });
+        agentResponse = {
+          ...(agentResponse || {}),
+          evaluation: {
+            score: Math.min(10, Math.max(0, (rubric.overall_score ?? 70) / 10)),
+            feedback: rubric.summary || 'Answer graded via ML rubric.',
+            follow_up_question: null,
+          },
+        };
+      } catch (rubricErr) {
+        console.warn('[integration] ML rubric fallback failed:', rubricErr.message);
+      }
+    }
+
+    const audioAnalysisData = mapAudioMetricsToPrisma(audioMetrics, {
+      durationSeconds: durationSeconds ? parseFloat(durationSeconds) : undefined,
+      transcriptText: effectiveTranscript,
+    });
 
     const candidateAnswer = await prisma.candidateAnswer.upsert({
       where: { interviewQuestionId: questionId },
       update: {
-        transcriptText: transcriptText || null,
+        transcriptText: effectiveTranscript || null,
         audioFileUrl: audioFileUrl || undefined,
         durationSeconds: durationSeconds ? parseFloat(durationSeconds) : undefined,
         submittedAt: new Date(),
@@ -90,7 +170,7 @@ export async function submitCandidateAnswer(req, res, next) {
       },
       create: {
         interviewQuestionId: questionId,
-        transcriptText: transcriptText || null,
+        transcriptText: effectiveTranscript || null,
         audioFileUrl: audioFileUrl || null,
         durationSeconds: durationSeconds ? parseFloat(durationSeconds) : null,
         ...(audioAnalysisData
@@ -157,6 +237,15 @@ export async function submitCandidateAnswer(req, res, next) {
             orderIndex: (maxOrder._max.orderIndex || 0) + 1,
           },
         });
+      }
+    }
+
+    if (!agentResponse?.session_complete) {
+      const unanswered = await prisma.interviewQuestion.count({
+        where: { interviewSessionId: sessionId, answer: null },
+      });
+      if (unanswered === 0) {
+        agentResponse = { ...(agentResponse || {}), session_complete: true };
       }
     }
 

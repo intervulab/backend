@@ -2,10 +2,12 @@
 import multer from 'multer';
 import path from 'path';
 import { ApiError } from './errorHandler.js';
+import { UPLOAD_DIR, ensureUploadDir } from '../utils/ensureUploadDir.js';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'storage/uploads/');
+    ensureUploadDir();
+    cb(null, UPLOAD_DIR);
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);

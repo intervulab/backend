@@ -43,12 +43,21 @@ export async function appendTranscript(sessionId, text, isFinal = true) {
   }
 }
 
-export async function analyzeAudioFile(sessionId, filePath, transcriptText, originalName) {
+export async function analyzeAudioFile(
+  sessionId,
+  filePath,
+  transcriptText,
+  originalName,
+  durationSeconds,
+) {
   try {
     const form = new FormData();
     form.append('session_id', sessionId);
     if (transcriptText?.trim()) {
       form.append('transcript_text', transcriptText.trim());
+    }
+    if (durationSeconds != null && !Number.isNaN(Number(durationSeconds))) {
+      form.append('duration_seconds', String(durationSeconds));
     }
     form.append('audio', fs.createReadStream(filePath), {
       filename: originalName || 'answer.wav',
