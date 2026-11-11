@@ -5,6 +5,10 @@ npm-debug.log*
 # Environment & Secrets
 .env
 .env.local
+.env.runtime
+
+# Local embedded Postgres data
+.pgdata/
 
 # Storage & File Uploads
 storage/uploads/*
