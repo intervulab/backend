@@ -36,3 +36,7 @@ From repo root (with all services running):
 ```
 
 Requires `curl`, `jq`, and valid credentials.
+
+## Frontend + Canvas
+
+See `interviewlab-frontend/docs/LOCAL_DEMO.md` for the browser demo. Socket.IO for canvas flaws runs on this server (same port as REST).
