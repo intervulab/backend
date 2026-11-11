@@ -137,6 +137,7 @@ model InterviewQuestion {
   id                 String           @id @default(uuid())
   interviewSessionId String
   interviewSession   InterviewSession @relation(fields: [interviewSessionId], references: [id], onDelete: Cascade)
+  agentQuestionId    String?
   questionText       String           @db.Text
   category           QuestionCategory
   difficulty         String
@@ -145,6 +146,7 @@ model InterviewQuestion {
   answer             CandidateAnswer?
 
   @@index([interviewSessionId])
+  @@index([agentQuestionId])
   @@map("interview_questions")
 }
 

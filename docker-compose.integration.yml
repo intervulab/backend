@@ -1,0 +1,50 @@
+version: "3.8"
+
+# Infrastructure + Python microservices. Run the Node API on the host for easier dev:
+#   npm install && npx prisma migrate deploy && npm run dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: interviewlab
+      POSTGRES_PASSWORD: interviewlab
+      POSTGRES_DB: ai_interview_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U interviewlab -d ai_interview_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  agent-orchestrator:
+    build:
+      context: ../interviewlab-agent-orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: development
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:4000
+    env_file:
+      - ../interviewlab-agent-orchestrator/.env
+    depends_on:
+      postgres:
+        condition: service_started
+
+  ml-analytics:
+    build:
+      context: ../intervulab
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      APP_ENV: development
+      RUBRIC_INFERENCE_MODE: heuristic
+      ALLOWED_ORIGINS: http://localhost:3000,http://localhost:4000
+
+volumes:
+  pgdata:

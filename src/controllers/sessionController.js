@@ -1,33 +1,14 @@
 // File: src/controllers/sessionController.js
 import prisma from '../config/database.js';
 import { ApiError } from '../middleware/errorHandler.js';
+import * as agentClient from '../services/agentClient.js';
 
-// Default question templates generated based on target role
 const DEFAULT_QUESTIONS = [
   {
     category: 'TECHNICAL_CONCEPT',
     difficulty: 'MEDIUM',
-    questionText: 'Explain the core principles of asynchronous I/O and how event loops manage non-blocking execution.',
-  },
-  {
-    category: 'SYSTEM_DESIGN',
-    difficulty: 'HARD',
-    questionText: 'Design a scalable multi-tenant architecture for handling real-time high-throughput websocket connections.',
-  },
-  {
-    category: 'CODING_LOGIC',
-    difficulty: 'MEDIUM',
-    questionText: 'How would you optimize database query indexing to handle millions of read requests per minute with low latency?',
-  },
-  {
-    category: 'BEHAVIORAL',
-    difficulty: 'EASY',
-    questionText: 'Describe a situation where you had to make a critical architectural tradeoff under tight project deadlines.',
-  },
-  {
-    category: 'DEVI_ADVOCATE',
-    difficulty: 'HARD',
-    questionText: 'Why would microservices be a terrible choice for a early-stage startup product compared to a clean monolith?',
+    questionText:
+      'Explain the core principles of asynchronous I/O and how event loops manage non-blocking execution.',
   },
 ];
 
@@ -37,14 +18,16 @@ export async function createInterviewSession(req, res, next) {
 
     const candidateProfile = await prisma.candidateProfile.findUnique({
       where: { userId: req.user.id },
+      include: { user: true },
     });
 
     if (!candidateProfile) {
       throw new ApiError(404, 'Candidate profile not found');
     }
 
+    let resume = null;
     if (resumeId) {
-      const resume = await prisma.resume.findFirst({
+      resume = await prisma.resume.findFirst({
         where: { id: resumeId, candidateId: candidateProfile.id },
       });
       if (!resume) {
@@ -59,26 +42,74 @@ export async function createInterviewSession(req, res, next) {
         title,
         targetRole,
         status: 'SCHEDULED',
-        questions: {
-          create: DEFAULT_QUESTIONS.map((q, index) => ({
-            questionText: q.questionText,
-            category: q.category,
-            difficulty: q.difficulty,
-            orderIndex: index + 1,
-          })),
+      },
+    });
+
+    const candidateName = `${candidateProfile.firstName} ${candidateProfile.lastName}`.trim();
+    const resumeText = resume?.extractedText || '';
+
+    let questionsToStore = [];
+    let agentPayload = null;
+
+    try {
+      agentPayload = await agentClient.startInterview({
+        session_id: session.id,
+        candidate_name: candidateName || candidateProfile.user.email,
+        job_role: targetRole,
+        resume_text: resumeText,
+        round_type: 'technical',
+        tech_stack: [],
+      });
+
+      questionsToStore = (agentPayload.questions || []).map((q, index) => ({
+        interviewSessionId: session.id,
+        agentQuestionId: q.question_id,
+        questionText: q.text,
+        category: 'TECHNICAL_CONCEPT',
+        difficulty: 'MEDIUM',
+        orderIndex: index + 1,
+      }));
+
+      await prisma.agentInteraction.create({
+        data: {
+          interviewSessionId: session.id,
+          agentName: 'orchestrator',
+          actionType: 'interview_started',
+          payload: agentPayload,
         },
+      });
+    } catch (agentErr) {
+      console.warn('[integration] Agent start failed, using fallback questions:', agentErr.message);
+      questionsToStore = DEFAULT_QUESTIONS.map((q, index) => ({
+        interviewSessionId: session.id,
+        questionText: q.questionText,
+        category: q.category,
+        difficulty: q.difficulty,
+        orderIndex: index + 1,
+      }));
+    }
+
+    await prisma.interviewQuestion.createMany({ data: questionsToStore });
+
+    const fullSession = await prisma.interviewSession.update({
+      where: { id: session.id },
+      data: {
+        status: 'IN_PROGRESS',
+        startedAt: new Date(),
       },
       include: {
-        questions: {
-          orderBy: { orderIndex: 'asc' },
-        },
+        questions: { orderBy: { orderIndex: 'asc' } },
       },
     });
 
     res.status(201).json({
       success: true,
       message: 'Interview session created successfully',
-      data: session,
+      data: {
+        ...fullSession,
+        agentSessionId: session.id,
+        debateLog: agentPayload?.debate_log || [],
+      },
     });
   } catch (error) {
     next(error);
@@ -98,16 +129,13 @@ export async function getCandidateSessions(req, res, next) {
     const sessions = await prisma.interviewSession.findMany({
       where: { candidateId: candidateProfile.id },
       include: {
-        questions: true,
+        questions: { select: { id: true, questionText: true, orderIndex: true } },
         report: true,
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    res.status(200).json({
-      success: true,
-      data: sessions,
-    });
+    res.status(200).json({ success: true, data: sessions });
   } catch (error) {
     next(error);
   }
@@ -122,7 +150,7 @@ export async function getSessionById(req, res, next) {
       include: {
         questions: {
           orderBy: { orderIndex: 'asc' },
-          include: { answer: true },
+          include: { answer: { include: { audioAnalysis: true, evaluation: true } } },
         },
         systemDesignSubmission: true,
         report: true,
@@ -133,10 +161,7 @@ export async function getSessionById(req, res, next) {
       throw new ApiError(404, 'Interview session not found');
     }
 
-    res.status(200).json({
-      success: true,
-      data: session,
-    });
+    res.status(200).json({ success: true, data: session });
   } catch (error) {
     next(error);
   }
@@ -147,21 +172,14 @@ export async function updateSessionStatus(req, res, next) {
     const { sessionId } = req.params;
     const { status } = req.body;
 
-    const updateData = { status };
-    if (status === 'IN_PROGRESS') {
-      updateData.startedAt = new Date();
-    } else if (status === 'COMPLETED' || status === 'CANCELLED') {
-      updateData.completedAt = new Date();
-    }
-
     const updatedSession = await prisma.interviewSession.update({
       where: { id: sessionId },
-      data: updateData,
+      data: { status },
     });
 
     res.status(200).json({
       success: true,
-      message: `Session status updated to ${status}`,
+      message: 'Session status updated',
       data: updatedSession,
     });
   } catch (error) {
