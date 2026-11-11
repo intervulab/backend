@@ -4,11 +4,13 @@ import app from './app.js';
 import { env } from './config/env.js';
 import { connectDatabase } from './config/database.js';
 import * as agentClient from './services/agentClient.js';
+import { attachInterviewWebSocket } from './realtime/interviewWs.js';
 
 async function startServer() {
   await connectDatabase();
 
   const server = http.createServer(app);
+  attachInterviewWebSocket(server);
 
   const io = new SocketIOServer(server, {
     cors: {
@@ -63,7 +65,9 @@ async function startServer() {
   });
 
   server.listen(env.PORT, () => {
-    console.log(`🚀 Server + Socket.IO on http://localhost:${env.PORT} [${env.NODE_ENV}]`);
+    console.log(
+      `🚀 Server on http://localhost:${env.PORT} (REST + /ws + Socket.IO) [${env.NODE_ENV}]`
+    );
   });
 }
 

@@ -39,4 +39,7 @@ Requires `curl`, `jq`, and valid credentials.
 
 ## Frontend + Canvas
 
-See `interviewlab-frontend/docs/LOCAL_DEMO.md` for the browser demo. Socket.IO for canvas flaws runs on this server (same port as REST).
+See `interviewlab-frontend/docs/LOCAL_DEMO.md` for the browser demo.
+
+- **Socket.IO** (canvas): same port — topology events from Component 2  
+- **WebSocket** `GET upgrade /ws?sessionId=&token=`: binary PCM → Component 5 → `metrics:update` JSON  

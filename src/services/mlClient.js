@@ -18,6 +18,15 @@ function wrapError(err, action) {
   throw error;
 }
 
+export async function processAudioChunk(payload) {
+  try {
+    const { data } = await client.post('/audio/chunk', payload);
+    return data;
+  } catch (err) {
+    wrapError(err, 'chunk');
+  }
+}
+
 export async function appendTranscript(sessionId, text, isFinal = true) {
   if (!text?.trim()) return null;
   try {
