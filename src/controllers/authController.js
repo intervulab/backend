@@ -109,3 +109,68 @@ export async function getProfile(req, res, next) {
     next(error);
   }
 }
+
+export async function updateProfile(req, res, next) {
+  try {
+    const { firstName, lastName, targetRole, yearsExperience, phone } = req.body;
+
+    const updated = await prisma.candidateProfile.update({
+      where: { userId: req.user.id },
+      data: {
+        ...(firstName !== undefined ? { firstName } : {}),
+        ...(lastName !== undefined ? { lastName } : {}),
+        ...(targetRole !== undefined ? { targetRole } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(yearsExperience !== undefined ? { yearsExperience: Number(yearsExperience) } : {}),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function changePassword(req, res, next) {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      throw new ApiError(400, 'Current password and new password are required');
+    }
+
+    if (newPassword.length < 8) {
+      throw new ApiError(400, 'New password must be at least 8 characters long');
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+    });
+
+    if (!user) {
+      throw new ApiError(404, 'User not found');
+    }
+
+    const isMatch = await comparePassword(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      throw new ApiError(401, 'Current password is incorrect');
+    }
+
+    const passwordHash = await hashPassword(newPassword);
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { passwordHash },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Password updated successfully',
+    });
+  } catch (error) {
+    next(error);
+  }
+}
