@@ -18,6 +18,14 @@ function wrapError(err, action) {
   throw error;
 }
 
+export async function resetAudioCounters(sessionId) {
+  try {
+    await client.post(`/audio/session/${sessionId}/reset-counters`);
+  } catch (err) {
+    wrapError(err, 'reset-counters');
+  }
+}
+
 export async function processAudioChunk(payload) {
   try {
     const { data } = await client.post('/audio/chunk', payload);
@@ -40,6 +48,22 @@ export async function appendTranscript(sessionId, text, isFinal = true) {
     return data;
   } catch (err) {
     wrapError(err, 'transcript');
+  }
+}
+
+export async function transcribeSnippet(filePath, originalName) {
+  try {
+    const form = new FormData();
+    form.append('audio', fs.createReadStream(filePath), {
+      filename: originalName || 'snippet.webm',
+    });
+    const { data } = await axios.post(`${env.ML_SERVICE_URL}/audio/transcribe-snippet`, form, {
+      headers: form.getHeaders(),
+      timeout: 90_000,
+    });
+    return data;
+  } catch (err) {
+    wrapError(err, 'transcribe-snippet');
   }
 }
 

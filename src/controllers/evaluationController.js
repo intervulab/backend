@@ -85,7 +85,10 @@ export async function generateSessionReport(req, res, next) {
         return {
           orderIndex: q.orderIndex ?? index + 1,
           questionPreview: (q.questionText || '').slice(0, 120),
+          questionText: q.questionText || '',
           transcriptText: isPlaceholder ? null : raw,
+          feedbackText: q.answer?.evaluation?.feedbackText?.trim() || null,
+          technicalScore: q.answer?.evaluation?.technicalScore ?? null,
           voiceRecordedSeconds: q.answer?.durationSeconds
             ? Math.round(Number(q.answer.durationSeconds))
             : null,
@@ -96,7 +99,8 @@ export async function generateSessionReport(req, res, next) {
         (row) =>
           row.transcriptText ||
           row.transcriptionPending ||
-          row.voiceRecordedSeconds != null,
+          row.voiceRecordedSeconds != null ||
+          row.feedbackText,
       );
 
     const detailedFeedback = {

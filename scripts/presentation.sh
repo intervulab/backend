@@ -33,12 +33,23 @@ done
 cmd="${1:-start}"
 case "$cmd" in
   start | up | "")
-    if stack_listening; then
-      log "Local stack already running — stopping first, then starting fresh…"
+    force="${INTERVIEWLAB_FORCE_RESTART:-0}"
+    if [[ "$force" == "1" ]]; then
+      log "INTERVIEWLAB_FORCE_RESTART=1 — recycling stack…"
       bash "$ROOT/backend/scripts/dev-local.sh" stop || true
       sleep 2
+      exec "$ROOT/backend/scripts/dev-local.sh" start
     fi
-    exec "$ROOT/backend/scripts/dev-local.sh" start
+    if stack_listening && http_ok "http://localhost:3000" && http_ok "http://localhost:4000/health"; then
+      log "Stack already healthy — skipping restart (set INTERVIEWLAB_FORCE_RESTART=1 to recycle)."
+    elif stack_listening; then
+      log "Stack unhealthy — stopping, then starting fresh…"
+      bash "$ROOT/backend/scripts/dev-local.sh" stop || true
+      sleep 2
+      exec "$ROOT/backend/scripts/dev-local.sh" start
+    else
+      exec "$ROOT/backend/scripts/dev-local.sh" start
+    fi
     ;;
   *)
     exec "$ROOT/backend/scripts/dev-local.sh" "$cmd"

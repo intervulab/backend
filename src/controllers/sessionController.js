@@ -3,6 +3,16 @@ import prisma from '../config/database.js';
 import { ApiError } from '../middleware/errorHandler.js';
 import * as agentClient from '../services/agentClient.js';
 
+function withTimeout(promise, ms, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 const DEFAULT_QUESTIONS = [
   {
     category: 'TECHNICAL_CONCEPT',
@@ -14,7 +24,8 @@ const DEFAULT_QUESTIONS = [
 
 export async function createInterviewSession(req, res, next) {
   try {
-    const { title, targetRole, resumeId } = req.body;
+    const { title, targetRole, resumeId, questionCount = 3 } = req.body;
+    const numQuestions = Math.min(15, Math.max(1, Number(questionCount) || 3));
 
     const candidateProfile = await prisma.candidateProfile.findUnique({
       where: { userId: req.user.id },
@@ -52,14 +63,19 @@ export async function createInterviewSession(req, res, next) {
     let agentPayload = null;
 
     try {
-      agentPayload = await agentClient.startInterview({
-        session_id: session.id,
-        candidate_name: candidateName || candidateProfile.user.email,
-        job_role: targetRole,
-        resume_text: resumeText,
-        round_type: 'technical',
-        tech_stack: [],
-      });
+      agentPayload = await withTimeout(
+        agentClient.startInterview({
+          session_id: session.id,
+          candidate_name: candidateName || candidateProfile.user.email,
+          job_role: targetRole,
+          resume_text: resumeText,
+          round_type: 'technical',
+          tech_stack: [],
+          num_questions: numQuestions,
+        }),
+        20_000,
+        'Agent start',
+      );
 
       questionsToStore = (agentPayload.questions || []).map((q, index) => ({
         interviewSessionId: session.id,
@@ -80,13 +96,29 @@ export async function createInterviewSession(req, res, next) {
       });
     } catch (agentErr) {
       console.warn('[integration] Agent start failed, using fallback questions:', agentErr.message);
-      questionsToStore = DEFAULT_QUESTIONS.map((q, index) => ({
-        interviewSessionId: session.id,
-        questionText: q.questionText,
-        category: q.category,
-        difficulty: q.difficulty,
-        orderIndex: index + 1,
-      }));
+      questionsToStore = Array.from({ length: numQuestions }, (_, index) => {
+        const q = DEFAULT_QUESTIONS[index % DEFAULT_QUESTIONS.length];
+        return {
+          interviewSessionId: session.id,
+          questionText: q.questionText,
+          category: q.category,
+          difficulty: q.difficulty,
+          orderIndex: index + 1,
+        };
+      });
+    }
+
+    if (!questionsToStore.length) {
+      questionsToStore = Array.from({ length: numQuestions }, (_, index) => {
+        const q = DEFAULT_QUESTIONS[index % DEFAULT_QUESTIONS.length];
+        return {
+          interviewSessionId: session.id,
+          questionText: q.questionText,
+          category: q.category,
+          difficulty: q.difficulty,
+          orderIndex: index + 1,
+        };
+      });
     }
 
     await prisma.interviewQuestion.createMany({ data: questionsToStore });

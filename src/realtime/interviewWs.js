@@ -104,6 +104,11 @@ export function attachInterviewWebSocket(server) {
           streaming = true;
           sequence = 0;
           sampleRate = msg.payload?.sampleRate || 16000;
+          try {
+            await mlClient.resetAudioCounters(sessionId);
+          } catch (err) {
+            console.warn('[ws] ML reset-counters failed:', err.message);
+          }
           break;
         case 'audio:stop':
           streaming = false;
