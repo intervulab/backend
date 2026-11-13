@@ -18,6 +18,9 @@ for d in intervulab backend interviewlab-frontend interviewlab-system-canvas int
 done
 ```
 
-Start: `$INTERVIEWLAB_ROOT/interviewlab-dev.sh` (or `backend/scripts/dev-local.sh`).
+Start:
+
+- **Desktop / taskbar:** `InterviewLab` app (runs `scripts/presentation-launch.sh` → Brave).
+- **Terminal:** `$INTERVIEWLAB_ROOT/presentation.sh` or `backend/scripts/dev-local.sh`.
 
 Secrets (not in git): `GROQ_API_KEY` in C4 `.env`; optional STT via `intervulab/requirements-stt.txt` in `.venv-ml`.
