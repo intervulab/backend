@@ -11,7 +11,7 @@ LOG="$ROOT/logs/presentation-launch.log"
 mkdir -p "$ROOT/logs"
 
 {
-  echo "=== $(date -Is) presentation launch ==="
+  echo "=== $(date -Is) presentation launch (stop-if-running, then start) ==="
   "$ROOT/backend/scripts/presentation.sh" start
 } >>"$LOG" 2>&1
 

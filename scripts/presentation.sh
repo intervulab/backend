@@ -8,8 +8,13 @@ export INTERVIEWLAB_ROOT="$ROOT"
 BRANCH="${INTERVIEWLAB_DEMO_BRANCH:-demo/presentation}"
 
 REPOS=(intervulab backend interviewlab-frontend interviewlab-system-canvas interviewlab-agent-orchestrator)
+DEV_DIR="$ROOT/backend/scripts/dev"
 
 log() { printf '%s\n' "$*"; }
+
+# shellcheck source=dev/_common.sh
+source "$DEV_DIR/_common.sh"
+dev_common_init
 
 log "== InterviewLab presentation ($BRANCH) =="
 
@@ -25,4 +30,17 @@ for d in "${REPOS[@]}"; do
   git -C "$dir" pull --ff-only origin "$BRANCH" 2>/dev/null || true
 done
 
-exec "$ROOT/backend/scripts/dev-local.sh" "${1:-start}"
+cmd="${1:-start}"
+case "$cmd" in
+  start | up | "")
+    if stack_listening; then
+      log "Local stack already running — stopping first, then starting fresh…"
+      bash "$ROOT/backend/scripts/dev-local.sh" stop || true
+      sleep 2
+    fi
+    exec "$ROOT/backend/scripts/dev-local.sh" start
+    ;;
+  *)
+    exec "$ROOT/backend/scripts/dev-local.sh" "$cmd"
+    ;;
+esac

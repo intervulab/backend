@@ -43,6 +43,17 @@ port_open() {
   fi
 }
 
+# True if any InterviewLab service port is listening (stack likely running).
+stack_listening() {
+  local port
+  for port in 3000 3001 4000 5432 8000 8001; do
+    if port_open "$port"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 http_ok() {
   curl -sf --max-time 3 "$1" >/dev/null 2>&1
 }
