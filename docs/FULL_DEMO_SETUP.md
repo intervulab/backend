@@ -45,7 +45,7 @@ Override optional tooling paths with `INTERVIEWLAB_NODE` and `INTERVIEWLAB_UV` i
 
 ## OpenAI (live AI questions)
 
-Copy `interviewlab-agent-orchestrator/.env.example` to `.env` and set `OPENAI_API_KEY`. Restart uvicorn on port **8000** after edits.
+Copy `interviewlab-agent-orchestrator/.env.example` to `.env` and set **`GROQ_API_KEY`**. Restart uvicorn on port **8000** after edits.
 
 Pin note: C4 requires `httpx==0.27.2` with current `langchain-openai` (see agent `requirements.txt`).
 

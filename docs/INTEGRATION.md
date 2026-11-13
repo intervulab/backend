@@ -20,7 +20,7 @@ Copy `.env.example` to `.env`. Requires:
 - `DATABASE_URL`
 - `AGENT_SERVICE_URL` (Component 4)
 - `ML_SERVICE_URL` (Component 5)
-- `OPENAI_API_KEY` in Component 4 `.env` for live AI questions
+- `GROQ_API_KEY` in Component 4 `.env` for live AI questions (Groq, not OpenAI on `integration/demo`)
 
 ## Flow
 

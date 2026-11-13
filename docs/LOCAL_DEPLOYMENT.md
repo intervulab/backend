@@ -140,7 +140,7 @@ cp -n interviewlab-frontend/.env.example interviewlab-frontend/.env.local
 cp -n interviewlab-agent-orchestrator/.env.example interviewlab-agent-orchestrator/.env
 ```
 
-Edit `interviewlab-agent-orchestrator/.env` and set a real `OPENAI_API_KEY` (with billing credits). Without it, C3 falls back to a **single default question** but the stack still runs.
+Edit `interviewlab-agent-orchestrator/.env` and set **`GROQ_API_KEY`** (see `.env.example` on `integration/demo`). Without it, C3 falls back to a **single default question** but the stack still runs; C5 rubric/ STT still work.
 
 **VERIFY:** Files exist:
 
@@ -290,21 +290,33 @@ Expected: `healthy` or `UP` / HTTP `200`.
 
 ---
 
-# Path B — One-shot script
+# Path B — One-shot script (recommended)
 
-## Step B5 — Embedded Postgres + `run-full-demo.sh`
+## Step B5 — `dev-local.sh` (one command)
 
-**Goal:** Same end state as Path A without manually opening five terminals.
+**Goal:** Same end state as Path A: preflight → Postgres → C5 → C4 → C3 → C1 → C2 → status table.
 
-**Prerequisites:** Steps 0–4 complete; venvs at `$INTERVIEWLAB_ROOT/.venv-agent` and `.venv-ml` (or edit the script).
+**Prerequisites:** Steps 0–4 complete once (venvs at `$INTERVIEWLAB_ROOT/.venv-agent` and `.venv-ml`, `npm install` in Node repos).
 
 **Commands:**
 
 ```bash
-export INTERVIEWLAB_ROOT  # set if not default layout
-chmod +x "$INTERVIEWLAB_ROOT/backend/scripts/run-full-demo.sh"
-"$INTERVIEWLAB_ROOT/backend/scripts/run-full-demo.sh"
+export INTERVIEWLAB_ROOT=~/Repos   # parent of backend/, intervulab/, etc.
+chmod +x "$INTERVIEWLAB_ROOT/interviewlab-dev.sh" "$INTERVIEWLAB_ROOT/backend/scripts/dev-local.sh"
+"$INTERVIEWLAB_ROOT/interviewlab-dev.sh"
 ```
+
+**Other commands:**
+
+```bash
+./interviewlab-dev.sh stop      # stop stack
+./interviewlab-dev.sh status    # ports / health
+./interviewlab-dev.sh restart
+```
+
+Logs: `$INTERVIEWLAB_ROOT/logs/` · PIDs: `$INTERVIEWLAB_ROOT/logs/pids/`
+
+Legacy alias: `backend/scripts/run-full-demo.sh` (calls `dev-local.sh`).
 
 **VERIFY:** Same health URLs as Step A7.
 
